@@ -1,21 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base target="_top">
+  <meta charset="UTF-8">
+  <title>エッジAI OCR 入力システム</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: sans-serif; margin: 20px; text-align: center; background-color: #f5f7fa; color: #333; }
-    #video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius: 8px; background-color: #000; }
-    #btn-scan { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; width: 100%; max-width: 400px; }
-    #btn-scan:disabled { background-color: #aaa; }
-    #status { margin-top: 15px; font-weight: bold; color: #555; font-size: 14px; }
-    #result { margin-top: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; text-align: left; white-space: pre-wrap; font-size: 13px; max-width: 400px; margin-left: auto; margin-right: auto; }
+    body { 
+      font-family: sans-serif; 
+      margin: 20px; 
+      text-align: center; 
+      background-color: #f5f7fa; 
+      color: #333; 
+    }
+    #video { 
+      width: 100%; 
+      max-width: 400px; 
+      border: 2px solid #ccc; 
+      border-radius: 8px; 
+      background-color: #000; 
+    }
+    #btn-scan { 
+      background-color: #007bff; 
+      color: white; 
+      border: none; 
+      padding: 12px 24px; 
+      font-size: 16px; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      margin-top: 10px; 
+      width: 100%; 
+      max-width: 400px; 
+    }
+    #btn-scan:disabled { 
+      background-color: #aaa; 
+    }
+    #status { 
+      margin-top: 15px; 
+      font-weight: bold; 
+      color: #555; 
+      font-size: 14px; 
+    }
+    #result { 
+      margin-top: 15px; 
+      padding: 10px; 
+      background: #fff; 
+      border: 1px solid #ddd; 
+      border-radius: 4px; 
+      text-align: left; 
+      white-space: pre-wrap; 
+      font-size: 13px; 
+      max-width: 400px; 
+      margin-left: auto; 
+      margin-right: auto; 
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
   <h3>エッジAI OCR スキャナー</h3>
-  <video id="video" autoplay playsinline allow="camera"></video>
+  <video id="video" autoplay playsinline></video>
   <br>
   <button id="btn-scan">読み取り実行</button>
   
@@ -55,24 +99,39 @@
 
         // Tesseract.jsによる文字認識 (日本語 'jpn' と英語・数字 'eng' を指定)
         const result = await Tesseract.recognize(canvas, 'jpn+eng', {
-          logger: m => { if(m.status === 'recognizing text') statusDiv.innerText = `解析中: ${Math.floor(m.progress * 100)}%`; }
+          logger: m => { 
+            if(m.status === 'recognizing text') {
+              statusDiv.innerText = `解析中: ${Math.floor(m.progress * 100)}%`; 
+            }
+          }
         });
 
         const detectedText = result.data.text;
         resultDiv.innerText = detectedText;
-        statusDiv.innerText = "解析完了。Googleサーバーへ送信中...";
+        statusDiv.innerText = "解析完了。Googleフォーム経由で送信中...";
 
-        // 3. GAS側の関数を呼び出してスプレッドシートのA列に保存
-        google.script.run
-          .withSuccessHandler((msg) => {
-            statusDiv.innerText = msg;
-            btnScan.disabled = false;
-          })
-          .withFailureHandler((err) => {
-            statusDiv.innerText = "書き込み失敗: " + err;
-            btnScan.disabled = false;
-          })
-          .appendToSheet(detectedText);
+        // 設定いただいたGoogleフォームのURLとentryのID
+        const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSf-DTlcr2g8FPyjZo_09zFqzVYqSp5nw_VnO6vzXMNkcH9GBg/formResponse";
+        const entryId = "entry.2075487833";
+
+        // フォームデータを作成
+        const formData = new FormData();
+        formData.append(entryId, detectedText);
+
+        // Googleフォームへ送信（no-corsモードでドメインポリシー制限を回避）
+        fetch(formUrl, {
+          method: "POST",
+          mode: "no-cors",
+          body: formData
+        })
+        .then(() => {
+          statusDiv.innerText = "送信完了！スプレッドシート（フォーム側）を確認してください。";
+          btnScan.disabled = false;
+        })
+        .catch((err) => {
+          statusDiv.innerText = "書き込み失敗: " + err;
+          btnScan.disabled = false;
+        });
 
       } catch (error) {
         statusDiv.innerText = "エラーが発生しました。";
