@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: sans-serif; margin: 20px; text-align: center; background-color: #f5f7fa; color: #333; }
+    #video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius: 8px; background-color: #000; }
+    #btn-scan { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; margin-top: 10px; width: 100%; max-width: 400px; }
+    #btn-scan:disabled { background-color: #aaa; }
+    #status { margin-top: 15px; font-weight: bold; color: #555; font-size: 14px; }
+    #result { margin-top: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; text-align: left; white-space: pre-wrap; font-size: 13px; max-width: 400px; margin-left: auto; margin-right: auto; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+
+  <h3>エッジAI OCR スキャナー</h3>
+  <video id="video" autoplay playsinline allow="camera"></video>
+  <br>
+  <button id="btn-scan">読み取り実行</button>
+  
+  <div id="status">カメラを起動中...</div>
+  <div id="result">【読み取り結果がここに表示されます】</div>
+
+  <script>
+    const video = document.getElementById('video');
+    const btnScan = document.getElementById('btn-scan');
+    const statusDiv = document.getElementById('status');
+    const resultDiv = document.getElementById('result');
+
+    // 1. スマホの背面カメラを起動
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then(stream => {
+        video.srcObject = stream;
+        statusDiv.innerText = "カメラ準備完了。対象に向けてボタンを押してください。";
+      })
+      .catch(err => {
+        statusDiv.innerText = "カメラの起動に失敗しました: " + err;
+        btnScan.disabled = true;
+      });
+
+    // 2. ボタンを押した時の処理（エッジAI OCR実行）
+    btnScan.addEventListener('click', async () => {
+      btnScan.disabled = true;
+      statusDiv.innerText = "端末内で文字を解析中（エッジAI処理）...";
+      resultDiv.innerText = "";
+
+      try {
+        // ビデオ映像から現在の1フレームをキャプチャするための仮想Canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Tesseract.jsによる文字認識 (日本語 'jpn' と英語・数字 'eng' を指定)
+        const result = await Tesseract.recognize(canvas, 'jpn+eng', {
+          logger: m => { if(m.status === 'recognizing text') statusDiv.innerText = `解析中: ${Math.floor(m.progress * 100)}%`; }
+        });
+
+        const detectedText = result.data.text;
+        resultDiv.innerText = detectedText;
+        statusDiv.innerText = "解析完了。Googleサーバーへ送信中...";
+
+        // 3. GAS側の関数を呼び出してスプレッドシートのA列に保存
+        google.script.run
+          .withSuccessHandler((msg) => {
+            statusDiv.innerText = msg;
+            btnScan.disabled = false;
+          })
+          .withFailureHandler((err) => {
+            statusDiv.innerText = "書き込み失敗: " + err;
+            btnScan.disabled = false;
+          })
+          .appendToSheet(detectedText);
+
+      } catch (error) {
+        statusDiv.innerText = "エラーが発生しました。";
+        resultDiv.innerText = error;
+        btnScan.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
