@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="robots" content="noindex, nofollow"> <!-- 検索エンジン除外 -->
-  <title>建機バーコードスキャナー (1画面最適化)</title>
+  <title>建機バーコードスキャナー (縦画面・突き抜け防止版)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <style>
     /* 全体サイズをスマホ画面に固定（スクロールを禁止） */
@@ -26,23 +26,32 @@
       padding: 10px;
     }
 
-    /* タイトル（高さを小さく） */
+    /* タイトル（高さを最小限に） */
     h3 {
       margin: 5px 0;
       font-size: 16px;
       color: #333;
+      flex: 0 0 auto;
     }
 
-    /* 💡 カメラ映像エリア：正方形に近い形で小さめに収める */
+    /* 💡 カメラ映像エリア：幅だけでなく、高さ（縦幅）も厳格に制限する */
     #reader { 
       width: 100%; 
       max-width: 320px; 
+      height: 200px; /* 縦幅の限界値を固定 */
       margin: 0 auto;
       border: 2px solid #ccc; 
       border-radius: 8px; 
       background-color: #000; 
       overflow: hidden;
-      flex: 0 1 auto; /* カメラが大きくなりすぎないように調整 */
+      flex: 0 0 auto; /* 画面サイズに影響されて伸縮しないように固定 */
+    }
+
+    /* 💡 html5-qrcode内のビデオ要素そのものに高さを強制フィットさせる */
+    #reader video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important; /* 縦横比を維持しながら、枠内に綺麗に収めてはみ出た分を切り取る */
     }
     
     /* ズームコントロールエリア */
@@ -53,6 +62,7 @@
       gap: 10px;
       width: 100%;
       max-width: 320px;
+      flex: 0 0 auto;
     }
     
     .btn-zoom {
@@ -77,9 +87,10 @@
       font-weight: bold; 
       color: #007bff; 
       font-size: 14px; 
+      flex: 0 0 auto;
     }
     
-    /* 💡 結果ボックス：カメラの下にコンパクトに配置 */
+    /* 結果ボックス */
     #result-box {
       margin: 5px auto;
       padding: 10px;
@@ -89,6 +100,7 @@
       width: 100%;
       max-width: 300px;
       box-sizing: border-box;
+      flex: 0 1 auto; /* 残りの余白スペースにコンパクトに収まる */
     }
     
     #result { 
@@ -112,7 +124,7 @@
   <div class="app-container">
     <h3>建機管理バーコードスキャナー</h3>
     
-    <!-- 1. カメラ映像エリア（一回りコンパクトに制限） -->
+    <!-- 1. カメラ映像エリア（高さ上限200pxにガチッとロック） -->
     <div id="reader"></div>
 
     <!-- 2. ズームコントロール -->
@@ -124,7 +136,7 @@
     <!-- 3. ステータス -->
     <div id="status">起動中...</div>
     
-    <!-- 4. 結果表示（スクロールせずに目に入る位置） -->
+    <!-- 4. 結果表示 -->
     <div id="result-box">
       <div style="font-size: 11px; color: #555;">最新の読み取り結果</div>
       <div id="result">【待機中】</div>
@@ -233,7 +245,7 @@
       
       const config = { 
         fps: 15, 
-        qrbox: { width: 220, height: 110 }, // 読み取り枠も画面に合わせて少しコンパクトに
+        qrbox: { width: 220, height: 110 }, 
         aspectRatio: 1.0,
         videoConstraints: {
           width: { ideal: 1920 },
