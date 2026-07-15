@@ -2,7 +2,8 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="robots" content="noindex, nofollow"> <title>爆速バーコードスキャナー (音付き)</title>
+  <meta name="robots" content="noindex, nofollow"> <!-- 検索エンジン除外 -->
+  <title>バーコードスキャナー</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { 
@@ -21,6 +22,31 @@
       border-radius: 8px; 
       background-color: #000; 
       overflow: hidden;
+    }
+    /* ズームコントロールエリア */
+    #zoom-control {
+      margin-top: 15px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .btn-zoom {
+      background-color: #6c757d;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      flex: 1;
+    }
+    .btn-zoom.active {
+      background-color: #007bff; /* アクティブなズーム状態を目立たせる */
     }
     #status { 
       margin-top: 15px; 
@@ -50,13 +76,21 @@
       margin-top: 5px;
     }
   </style>
+  <!-- 超高速バーコード・QRコード読み取りライブラリのインポート -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
   <h3>建機管理バーコードスキャナー</h3>
   
+  <!-- カメラ映像と読み取り枠が表示されるエリア -->
   <div id="reader"></div>
+
+  <!-- 💡 ズームボタンエリア（等倍と2倍ズーム） -->
+  <div id="zoom-control">
+    <button id="btn-zoom-1x" class="btn-zoom active">通常 (1x)</button>
+    <button id="btn-zoom-2x" class="btn-zoom">2倍ズーム (2x)</button>
+  </div>
   
   <div id="status">起動中...</div>
   
@@ -69,6 +103,11 @@
   <script>
     const statusDiv = document.getElementById('status');
     const resultDiv = document.getElementById('result');
+    const btnZoom1x = document.getElementById('btn-zoom-1x');
+    const btnZoom2x = document.getElementById('btn-zoom-2x');
+    
+    let html5QrcodeScanner = null;
+    let cameraCapabilities = null; // カメラのズーム機能を保持する変数
     let isScanning = true; // 連続送信を防ぐフラグ
 
     // 💡 ブラウザのスピーカーで「ピッ」という電子音を作る関数
@@ -78,15 +117,14 @@
         const oscillator = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
 
-        oscillator.type = 'sine'; // 音色（サイン波）
-        oscillator.frequency.setValueAtTime(1500, audioCtx.currentTime); // 音の高さ（1500Hzの高音）
-        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); // 音量
+        oscillator.type = 'sine'; 
+        oscillator.frequency.setValueAtTime(1500, audioCtx.currentTime); 
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); 
 
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
 
         oscillator.start();
-        // 0.08秒（80ミリ秒）だけ鳴らして止める（レジの「ピッ」を再現）
         oscillator.stop(audioCtx.currentTime + 0.08); 
       } catch (e) {
         console.log("オーディオ再生エラー:", e);
@@ -95,14 +133,11 @@
 
     // 💡 読み取りに成功した時の処理
     function onScanSuccess(decodedText, decodedResult) {
-      // 連続で何回も読み込んで送信してしまうのを防ぐ
       if (!isScanning) return; 
       isScanning = false;
 
-      // 1. 「ピッ」と音を鳴らす
       playBeep();
 
-      // 2. 画面の表示を読み取り結果に変える
       resultDiv.innerText = decodedText;
       statusDiv.innerText = "読み取り成功！送信中...";
 
@@ -113,7 +148,6 @@
       const formData = new FormData();
       formData.append(entryId, decodedText);
 
-      // 3. Googleフォームへ送信
       fetch(formUrl, {
         method: "POST",
         mode: "no-cors",
@@ -121,7 +155,6 @@
       })
       .then(() => {
         statusDiv.innerText = "スプレッドシートへの記録が完了しました。";
-        // 2秒後に自動で次の読み取り状態に戻す
         setTimeout(() => {
           statusDiv.innerText = "次のバーコードをかざしてください。";
           isScanning = true;
@@ -133,18 +166,63 @@
       });
     }
 
+    // 💡 ズーム倍率を変更する共通処理
+    async function applyZoom(zoomValue) {
+      if (!html5QrcodeScanner || !cameraCapabilities) return;
+      
+      // カメラがズームに対応しているかチェック
+      if (cameraCapabilities.zoom) {
+        try {
+          // ズーム値をカメラに適用
+          await html5QrcodeScanner.applyVideoConstrains({
+            advanced: [{ zoom: zoomValue }]
+          });
+        } catch (err) {
+          console.error("ズーム適用エラー:", err);
+        }
+      } else {
+        statusDiv.innerText = "お使いの端末カメラはズーム制御に対応していません。";
+      }
+    }
+
+    // 💡 ズームボタンのクリックイベント登録
+    btnZoom1x.addEventListener('click', () => {
+      btnZoom1x.classList.add('active');
+      btnZoom2x.classList.remove('active');
+      applyZoom(1); // 等倍（初期値）に戻す
+    });
+
+    btnZoom2x.addEventListener('click', () => {
+      if (cameraCapabilities && cameraCapabilities.zoom) {
+        btnZoom2x.classList.add('active');
+        btnZoom1x.classList.remove('active');
+        
+        // カメラがサポートする最大ズーム値と「2」の小さい方を適用（安全策）
+        const maxZoom = cameraCapabilities.zoom.max || 2;
+        const targetZoom = Math.min(2, maxZoom);
+        applyZoom(targetZoom);
+      } else {
+        alert("このスマートフォンのカメラはブラウザからのズーム制御に対応していません。");
+      }
+    });
+
     // 💡 ページを開いた瞬間に自動でカメラを起動してスキャン開始
     window.addEventListener('DOMContentLoaded', () => {
-      // スキャナーの設定（読み取り枠を正方形に近づけ、スマホ背面カメラを優先）
-      const html5QrcodeScanner = new Html5Qrcode("reader");
+      html5QrcodeScanner = new Html5Qrcode("reader");
       
       const config = { 
-        fps: 15, // 1秒間に何回スキャンを試みるか（15〜20が最適）
-        qrbox: { width: 280, height: 150 }, // バーコードが入りやすい横長の読み取り枠
-        aspectRatio: 1.0
+        fps: 15, 
+        qrbox: { width: 280, height: 150 }, 
+        aspectRatio: 1.0,
+        // 💡 【画素数の引き上げ】フルHD(1920x1080)を優先して要求
+        videoConstraints: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          facingMode: "environment"
+        }
       };
 
-      // 背面カメラ（environment）で即時開始
+      // 背面カメラでスキャンを開始
       html5QrcodeScanner.start(
         { facingMode: "environment" }, 
         config, 
@@ -152,6 +230,19 @@
       )
       .then(() => {
         statusDiv.innerText = "スキャナー作動中。バーコードを枠に合わせてください。";
+        
+        // 💡 カメラ起動後にズーム機能（Capabilities）が使えるか取得して保持する
+        setTimeout(() => {
+          try {
+            cameraCapabilities = html5QrcodeScanner.getRunningTrackCapabilities();
+            if (!cameraCapabilities || !cameraCapabilities.zoom) {
+              // ズーム非対応端末の場合はボタンを非表示、またはグレーアウト
+              console.log("この端末はブラウザからのズーム制御に対応していません。");
+            }
+          } catch (e) {
+            console.error("カメラ性能取得失敗:", e);
+          }
+        }, 1000); // カメラ起動完了を少し待ってから取得
       })
       .catch(err => {
         statusDiv.innerText = "カメラ起動エラー。アクセスを許可してください: " + err;
